@@ -11,54 +11,69 @@ $pageTitle = 'Inventory Management - GMPC Stock Requisition';
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_item'])) {
-        $item_id = sanitize($conn, $_POST['item_id']);
-        $supplier_id = (int)$_POST['supplier_id'];
-        $date = sanitize($conn, $_POST['date']);
-        $description = sanitize($conn, $_POST['description']);
-        $unit = sanitize($conn, $_POST['unit']);
-        $qty = (int)$_POST['qty'];
-        $unit_price = (float)$_POST['unit_price'];
-        $amount = $qty * $unit_price;
-        $classification = sanitize($conn, $_POST['classification']);
-        
-        $status = 'In Stock';
-        if ($qty <= 0) $status = 'Out of Stock';
-        elseif ($qty < 10) $status = 'Critical';
-        elseif ($qty < 20) $status = 'Low Stock';
-        
-        $stmt = $conn->prepare("INSERT INTO inventory (item_id, supplier_id, date, description, unit, qty, unit_price, amount, total_running_stocks, status, classification) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("sisssiddiss", $item_id, $supplier_id, $date, $description, $unit, $qty, $unit_price, $amount, $qty, $status, $classification);
-        
-        if ($stmt->execute()) {
-            $success = "Item added successfully";
+        if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            $error = 'Invalid security token. Please try again.';
         } else {
-            $error = "Error adding item: " . $conn->error;
+            $item_id = generateItemId($conn);
+            $supplier_id = (int)$_POST['supplier_id'];
+            $date = sanitize($conn, $_POST['date']);
+            $description = sanitize($conn, $_POST['description']);
+            $unit = sanitize($conn, $_POST['unit']);
+            $qty = (int)$_POST['qty'];
+            $unit_price = (float)$_POST['unit_price'];
+            $amount = $qty * $unit_price;
+            $classification = sanitize($conn, $_POST['classification']);
+            
+            $status = 'In Stock';
+            if ($qty <= 0) $status = 'Out of Stock';
+            elseif ($qty < 10) $status = 'Critical';
+            elseif ($qty < 20) $status = 'Low Stock';
+            
+            $stmt = $conn->prepare("INSERT INTO inventory (item_id, supplier_id, date, description, unit, qty, unit_price, amount, total_running_stocks, status, classification) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("sisssiddiss", $item_id, $supplier_id, $date, $description, $unit, $qty, $unit_price, $amount, $qty, $status, $classification);
+            
+            if ($stmt->execute()) {
+                $success = "Item added successfully";
+                logActivity($conn, $_SESSION['user_id'], 'Add Inventory', "Added item: $item_id - $description");
+            } else {
+                $error = "Error adding item: " . $conn->error;
+            }
         }
     }
     
     if (isset($_POST['delete_item'])) {
-        $id = (int)$_POST['id'];
-        $conn->query("DELETE FROM inventory WHERE id = $id");
-        $success = "Item deleted successfully";
+        if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            $error = 'Invalid security token. Please try again.';
+        } else {
+            $id = (int)$_POST['id'];
+            $conn->query("DELETE FROM inventory WHERE id = $id");
+            $success = "Item deleted successfully";
+            logActivity($conn, $_SESSION['user_id'], 'Delete Inventory', "Deleted item ID: $id");
+        }
     }
     
     if (isset($_POST['update_item'])) {
-        $id = (int)$_POST['id'];
-        $description = sanitize($conn, $_POST['description']);
-        $unit = sanitize($conn, $_POST['unit']);
-        $qty = (int)$_POST['qty'];
-        $unit_price = (float)$_POST['unit_price'];
-        $amount = $qty * $unit_price;
-        
-        $status = 'In Stock';
-        if ($qty <= 0) $status = 'Out of Stock';
-        elseif ($qty < 10) $status = 'Critical';
-        elseif ($qty < 20) $status = 'Low Stock';
-        
-        $stmt = $conn->prepare("UPDATE inventory SET description=?, unit=?, qty=?, unit_price=?, amount=?, total_running_stocks=?, status=? WHERE id=?");
-        $stmt->bind_param("siiddisi", $description, $unit, $qty, $unit_price, $amount, $qty, $status, $id);
-        $stmt->execute();
-        $success = "Item updated successfully";
+        if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            $error = 'Invalid security token. Please try again.';
+        } else {
+            $id = (int)$_POST['id'];
+            $description = sanitize($conn, $_POST['description']);
+            $unit = sanitize($conn, $_POST['unit']);
+            $qty = (int)$_POST['qty'];
+            $unit_price = (float)$_POST['unit_price'];
+            $amount = $qty * $unit_price;
+            
+            $status = 'In Stock';
+            if ($qty <= 0) $status = 'Out of Stock';
+            elseif ($qty < 10) $status = 'Critical';
+            elseif ($qty < 20) $status = 'Low Stock';
+            
+            $stmt = $conn->prepare("UPDATE inventory SET description=?, unit=?, qty=?, unit_price=?, amount=?, total_running_stocks=?, status=? WHERE id=?");
+            $stmt->bind_param("siiddisi", $description, $unit, $qty, $unit_price, $amount, $qty, $status, $id);
+            $stmt->execute();
+            $success = "Item updated successfully";
+            logActivity($conn, $_SESSION['user_id'], 'Update Inventory', "Updated item ID: $id");
+        }
     }
 }
 
@@ -72,6 +87,9 @@ $inventory = $conn->query("
 
 // Get suppliers for dropdown
 $suppliers = $conn->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY name");
+
+// Generate CSRF token
+$csrfToken = csrfToken();
 
 include '../includes/header.php';
 include 'sidebar.php';
@@ -178,6 +196,7 @@ include 'sidebar.php';
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 <form method="POST" class="d-inline" onsubmit="return confirmDelete()">
+                                    <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                                     <input type="hidden" name="delete_item" value="1">
                                     <input type="hidden" name="id" value="<?= $row['id'] ?>">
                                     <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
@@ -195,6 +214,7 @@ include 'sidebar.php';
                                     </div>
                                     <form method="POST">
                                         <div class="modal-body">
+                                            <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                                             <input type="hidden" name="update_item" value="1">
                                             <input type="hidden" name="id" value="<?= $row['id'] ?>">
                                             <div class="mb-3">
@@ -251,9 +271,10 @@ include 'sidebar.php';
             </div>
             <form method="POST">
                 <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                     <div class="mb-3">
                         <label class="form-label">Item ID</label>
-                        <input type="text" class="form-control" name="item_id" required placeholder="e.g., OFD-0001">
+                        <input type="text" class="form-control" name="item_id" value="<?= generateItemId($conn) ?>" readonly>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Supplier</label>

@@ -8,8 +8,11 @@ if (!isLoggedIn() || $_SESSION['role'] === 'admin') {
 $activePage = 'new-requisition';
 $branchName = $_SESSION['branch'];
 
-// Get branch ID
-$branchResult = $conn->query("SELECT id, email FROM branches WHERE name = '$branchName'");
+// Get branch ID using prepared statement
+$stmt = $conn->prepare("SELECT id, email FROM branches WHERE name = ?");
+$stmt->bind_param("s", $branchName);
+$stmt->execute();
+$branchResult = $stmt->get_result();
 $branch = $branchResult->fetch_assoc();
 $branchId = $branch['id'] ?? 0;
 
@@ -18,75 +21,106 @@ $inventory = $conn->query("SELECT * FROM inventory WHERE qty > 0 ORDER BY descri
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $requestType = sanitize($conn, $_POST['request_type']);
-    
-    if ($requestType === 'OFFICE SUPPLIES') {
-        $requisitionCode = generateRequisitionCode($conn);
-        $to = sanitize($conn, $_POST['to']);
-        $purpose = sanitize($conn, $_POST['purpose']);
-        $note = sanitize($conn, $_POST['note']);
-        $requestedBy = $_SESSION['name'];
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Invalid security token. Please try again.';
+    } else {
+        $requestType = sanitize($conn, $_POST['request_type']);
         
-        // Calculate total
-        $items = $_POST['items'] ?? [];
-        $totalAmount = 0;
-        foreach ($items as $item) {
-            $totalAmount += ($item['qty'] * $item['unit_price']);
-        }
-        
-        $stmt = $conn->prepare("INSERT INTO requisitions (requisition_code, user_id, branch_id, request_type, `to`, purpose, note, requested_by, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)");
-        $stmt->bind_param("siisssssd", $requisitionCode, $_SESSION['user_id'], $branchId, $requestType, $to, $purpose, $note, $requestedBy, $totalAmount);
-        
-        if ($stmt->execute()) {
-            $reqId = $conn->insert_id;
+        if ($requestType === 'OFFICE SUPPLIES') {
+            $requisitionCode = generateRequisitionCode($conn);
+            $to = sanitize($conn, $_POST['to']);
+            $purpose = sanitize($conn, $_POST['purpose']);
+            $note = sanitize($conn, $_POST['note']);
+            $requestedBy = $_SESSION['name'];
+            $userId = $_SESSION['user_id'];
             
-            // Insert items
+            // Calculate total
+            $items = $_POST['items'] ?? [];
+            $totalAmount = 0;
             foreach ($items as $item) {
-                if (!empty($item['description']) && $item['qty'] > 0) {
-                    $desc = sanitize($conn, $item['description']);
-                    $qty = (int)$item['qty'];
-                    $unit = sanitize($conn, $item['unit']);
-                    $uprice = (float)$item['unit_price'];
-                    $amount = $qty * $uprice;
-                    
-                    $stmt2 = $conn->prepare("INSERT INTO requisition_items (requisition_id, description, qty, unit, unit_price, amount, status) VALUES (?, ?, ?, ?, ?, ?, 'Pending')");
-                    $stmt2->bind_param("isisdd", $reqId, $desc, $qty, $unit, $uprice, $amount);
-                    $stmt2->execute();
-                }
+                $totalAmount += ((int)$item['qty'] * (float)$item['unit_price']);
             }
             
-            $success = "Requisition submitted successfully! Code: $requisitionCode";
+            $stmt = $conn->prepare("INSERT INTO requisitions (requisition_code, user_id, branch_id, request_type, `to`, purpose, note, requested_by, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)");
+            $stmt->bind_param("siisssssd", $requisitionCode, $userId, $branchId, $requestType, $to, $purpose, $note, $requestedBy, $totalAmount);
+            
+            if ($stmt->execute()) {
+                $reqId = $conn->insert_id;
+                
+                // Insert items and deduct inventory
+                foreach ($items as $item) {
+                    if (!empty($item['description']) && (int)$item['qty'] > 0) {
+                        $desc = sanitize($conn, $item['description']);
+                        $qty = (int)$item['qty'];
+                        $unit = sanitize($conn, $item['unit']);
+                        $uprice = (float)$item['unit_price'];
+                        $amount = $qty * $uprice;
+                        $itemId = (int)$item['item_id'];
+                        
+                        $stmt2 = $conn->prepare("INSERT INTO requisition_items (requisition_id, item_id, description, qty, unit, unit_price, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')");
+                        $stmt2->bind_param("iisisdd", $reqId, $itemId, $desc, $qty, $unit, $uprice, $amount);
+                        $stmt2->execute();
+                        
+                        // Deduct inventory stock
+                        if ($itemId > 0) {
+                            $stmt3 = $conn->prepare("UPDATE inventory SET qty = qty - ? WHERE id = ?");
+                            $stmt3->bind_param("ii", $qty, $itemId);
+                            $stmt3->execute();
+                        }
+                    }
+                }
+                
+                // Log activity
+                logActivity($conn, $userId, 'Create Requisition', "Created requisition $requisitionCode");
+                
+                $success = "Requisition submitted successfully! Code: $requisitionCode";
+            } else {
+                $error = "Error submitting requisition: " . $conn->error;
+            }
         } else {
-            $error = "Error submitting requisition: " . $conn->error;
+            // Special request
+            $requestCode = generateSpecialRequestCode($conn);
+            $description = sanitize($conn, $_POST['description']);
+            $qty = (int)$_POST['qty'];
+            $unit = sanitize($conn, $_POST['unit']);
+            $estimatedPrice = (float)$_POST['estimated_price'];
+            $totalAmount = $qty * $estimatedPrice;
+            $purpose = sanitize($conn, $_POST['purpose']);
+            $requestedBy = $_SESSION['name'];
+            $userId = $_SESSION['user_id'];
+            
+            $stmt = $conn->prepare("INSERT INTO special_requests (request_code, branch_id, description, qty, unit, estimated_price, total_amount, purpose, requested_by, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
+            $stmt->bind_param("sisissdss", $requestCode, $branchId, $description, $qty, $unit, $estimatedPrice, $totalAmount, $purpose, $requestedBy);
+            
+            if ($stmt->execute()) {
+                // Log activity
+                logActivity($conn, $userId, 'Create Special Request', "Created special request $requestCode");
+                
+                $success = "Special request submitted successfully! Code: $requestCode";
+            } else {
+                $error = "Error submitting special request: " . $conn->error;
+            }
         }
-    } else {
-        // Special request
-        $requestCode = generateSpecialRequestCode($conn);
-        $description = sanitize($conn, $_POST['description']);
-        $qty = (int)$_POST['qty'];
-        $unit = sanitize($conn, $_POST['unit']);
-        $estimatedPrice = (float)$_POST['estimated_price'];
-        $totalAmount = $qty * $estimatedPrice;
-        $purpose = sanitize($conn, $_POST['purpose']);
-        $requestedBy = $_SESSION['name'];
         
-        $stmt = $conn->prepare("INSERT INTO special_requests (request_code, branch_id, description, qty, unit, estimated_price, total_amount, purpose, requested_by, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
-        $stmt->bind_param("sisissdss", $requestCode, $branchId, $description, $qty, $unit, $estimatedPrice, $totalAmount, $purpose, $requestedBy);
-        
-        if ($stmt->execute()) {
-            $success = "Special request submitted successfully! Code: $requestCode";
-        } else {
-            $error = "Error submitting special request: " . $conn->error;
-        }
+        // Refresh inventory after deduction
+        $inventory = $conn->query("SELECT * FROM inventory WHERE qty > 0 ORDER BY description");
     }
 }
 
+$csrfToken = csrfToken();
 $pageTitle = 'New Requisition - GMPC Branch Portal';
 include '../includes/header.php';
 include 'sidebar.php';
 ?>
 
 <div class="main-content">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="index.php"><i class="bi bi-house"></i> Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">New Requisition</li>
+        </ol>
+    </nav>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h4><i class="bi bi-plus-circle me-2"></i>New Requisition</h4>
     </div>
@@ -133,12 +167,13 @@ include 'sidebar.php';
         </div>
         <div class="card-body">
             <form method="POST" id="officeForm">
+                <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                 <input type="hidden" name="request_type" value="OFFICE SUPPLIES">
                 
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label class="form-label">Branch</label>
-                        <input type="text" class="form-control" value="<?= $branchName ?>" disabled>
+                        <input type="text" class="form-control" value="<?= htmlspecialchars($branchName) ?>" disabled>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Date</label>
@@ -175,8 +210,8 @@ include 'sidebar.php';
                             <select class="form-select item-select" name="items[0][item_id]" onchange="updateItemDetails(this)">
                                 <option value="">Select Item</option>
                                 <?php while ($row = $inventory->fetch_assoc()): ?>
-                                <option value="<?= $row['id'] ?>" data-desc="<?= $row['description'] ?>" data-unit="<?= $row['unit'] ?>" data-price="<?= $row['unit_price'] ?>" data-qty="<?= $row['qty'] ?>">
-                                    <?= $row['description'] ?> (<?= $row['unit'] ?>) - ₱<?= number_format($row['unit_price'], 2) ?>
+                                <option value="<?= $row['id'] ?>" data-desc="<?= htmlspecialchars($row['description']) ?>" data-unit="<?= htmlspecialchars($row['unit']) ?>" data-price="<?= $row['unit_price'] ?>" data-qty="<?= $row['qty'] ?>">
+                                    <?= htmlspecialchars($row['description']) ?> (<?= htmlspecialchars($row['unit']) ?>) - ₱<?= number_format($row['unit_price'], 2) ?> (Stock: <?= $row['qty'] ?>)
                                 </option>
                                 <?php endwhile; ?>
                             </select>
@@ -219,12 +254,13 @@ include 'sidebar.php';
         </div>
         <div class="card-body">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
                 <input type="hidden" name="request_type" value="SPECIAL REQUEST">
                 
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label class="form-label">Branch</label>
-                        <input type="text" class="form-control" value="<?= $branchName ?>" disabled>
+                        <input type="text" class="form-control" value="<?= htmlspecialchars($branchName) ?>" disabled>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Date</label>
@@ -291,8 +327,8 @@ function addItem() {
                 <?php 
                 $inventory->data_seek(0);
                 while ($row = $inventory->fetch_assoc()): ?>
-                <option value="<?= $row['id'] ?>" data-desc="<?= $row['description'] ?>" data-unit="<?= $row['unit'] ?>" data-price="<?= $row['unit_price'] ?>" data-qty="<?= $row['qty'] ?>">
-                    <?= $row['description'] ?> (<?= $row['unit'] ?>) - ₱<?= number_format($row['unit_price'], 2) ?>
+                <option value="<?= $row['id'] ?>" data-desc="<?= htmlspecialchars($row['description']) ?>" data-unit="<?= htmlspecialchars($row['unit']) ?>" data-price="<?= $row['unit_price'] ?>" data-qty="<?= $row['qty'] ?>">
+                    <?= htmlspecialchars($row['description']) ?> (<?= htmlspecialchars($row['unit']) ?>) - ₱<?= number_format($row['unit_price'], 2) ?> (Stock: <?= $row['qty'] ?>)
                 </option>
                 <?php endwhile; ?>
             </select>
