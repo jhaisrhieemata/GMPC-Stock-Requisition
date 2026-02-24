@@ -6,6 +6,7 @@
     <title><?= $pageTitle ?? 'GMPC Stock Requisition' ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/responsive.css">
     <style>
         :root {
             --sidebar-width: 260px;
@@ -92,10 +93,35 @@
             .sidebar {
                 transform: translateX(-100%);
             }
+            .sidebar.show {
+                transform: translateX(0);
+            }
             .main-content {
                 margin-left: 0;
             }
+            .mobile-menu-toggle {
+                display: block !important;
+            }
+            .sidebar-overlay {
+                display: block;
+                opacity: 0;
+                pointer-events: none;
+            }
+            .sidebar-overlay.show {
+                opacity: 1;
+                pointer-events: auto;
+            }
         }
     </style>
+    <script>
+    function toggleSidebar() {
+        document.querySelector('.sidebar').classList.toggle('show');
+        document.querySelector('.sidebar-overlay').classList.toggle('show');
+    }
+    </script>
 </head>
 <body>
+<button class="btn btn-primary mobile-menu-toggle" onclick="toggleSidebar()">
+    <i class="bi bi-list"></i>
+</button>
+<div class="sidebar-overlay" onclick="toggleSidebar()"></div>

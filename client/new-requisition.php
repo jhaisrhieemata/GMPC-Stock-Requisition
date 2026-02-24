@@ -34,8 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $totalAmount += ($item['qty'] * $item['unit_price']);
         }
         
-        $stmt = $conn->prepare("INSERT INTO requisitions (requisition_code, branch_id, request_type, `to`, purpose, note, requested_by, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?)");
-        $stmt->bind_param("sisssssd", $requisitionCode, $branchId, $requestType, $to, $purpose, $note, $requestedBy, $totalAmount);
+        $stmt = $conn->prepare("INSERT INTO requisitions (requisition_code, user_id, branch_id, request_type, `to`, purpose, note, requested_by, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)");
+        $stmt->bind_param("siisssssd", $requisitionCode, $_SESSION['user_id'], $branchId, $requestType, $to, $purpose, $note, $requestedBy, $totalAmount);
         
         if ($stmt->execute()) {
             $reqId = $conn->insert_id;

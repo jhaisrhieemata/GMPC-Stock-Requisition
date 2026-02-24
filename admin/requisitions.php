@@ -63,7 +63,7 @@ include 'sidebar.php';
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Filter by Status</label>
                     <select class="form-select" name="status" onchange="this.form.submit()">
                         <option value="">All Status</option>
@@ -80,39 +80,160 @@ include 'sidebar.php';
     <!-- Nav Tabs -->
     <ul class="nav nav-tabs mb-3" id="requisitionTabs" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="office-tab" data-bs-toggle="tab" data-bs-target="#office" type="button">
-                <i class="bi bi-file-earmark-text me-2"></i>Office Supplies
-                <span class="badge bg-warning ms-2"><?= $requisitions->num_rows ?></span>
+            <button class="nav-link active" id="special-tab" data-bs-toggle="tab" data-bs-target="#special" type="button" role="tab" aria-selected="true">
+                <i class="bi bi-exclamation-triangle me-2"></i>Special Requests
+                <span class="badge bg-danger ms-2"><?= $specialRequests->num_rows ?></span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="special-tab" data-bs-toggle="tab" data-bs-target="#special" type="button">
-                <i class="bi bi-exclamation-triangle me-2"></i>Special Requests
-                <span class="badge bg-danger ms-2"><?= $specialRequests->num_rows ?></span>
+            <button class="nav-link" id="office-tab" data-bs-toggle="tab" data-bs-target="#office" type="button" role="tab" aria-selected="false">
+                <i class="bi bi-file-earmark-text me-2"></i>Office Supplies
+                <span class="badge bg-warning ms-2"><?= $requisitions->num_rows ?></span>
             </button>
         </li>
     </ul>
 
     <div class="tab-content" id="requisitionTabsContent">
-        <!-- Office Supplies Tab -->
-        <div class="tab-pane fade show active" id="office" role="tabpanel">
+        <!-- Special Requests Tab (First/Default) -->
+        <div class="tab-pane fade show active" id="special" role="tabpanel">
             <div class="card table-card">
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0" id="specialRequestsTable">
                             <thead class="table-light">
                                 <tr>
                                     <th>Code</th>
                                     <th>Branch</th>
-                                    <th>To</th>
-                                    <th>Requested By</th>
+                                    <th>Description</th>
+                                    <th>Qty</th>
+                                    <th>Unit</th>
+                                    <th>Est. Price</th>
                                     <th>Total</th>
+                                    <th>Requested By</th>
+                                    <th>Purpose</th>
                                     <th>Status</th>
                                     <th>Date</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                <?php 
+                                $specialRequests->data_seek(0);
+                                while ($row = $specialRequests->fetch_assoc()): ?>
+                                <tr>
+                                    <td><?= $row['request_code'] ?></td>
+                                    <td><?= $row['branch_name'] ?></td>
+                                    <td><?= substr($row['description'], 0, 25) ?><?= strlen($row['description']) > 25 ? '...' : '' ?></td>
+                                    <td><?= $row['qty'] ?></td>
+                                    <td><?= $row['unit'] ?></td>
+                                    <td>₱<?= number_format($row['estimated_price'], 2) ?></td>
+                                    <td>₱<?= number_format($row['total_amount'], 2) ?></td>
+                                    <td><?= $row['requested_by'] ?></td>
+                                    <td><?= substr($row['purpose'], 0, 25) ?><?= strlen($row['purpose']) > 25 ? '...' : '' ?></td>
+                                    <td>
+                                        <?php 
+                                        $statusClass = 'bg-secondary';
+                                        if (strpos($row['status'], 'Pending') !== false) $statusClass = 'bg-warning text-dark';
+                                        elseif (strpos($row['status'], 'Approved') !== false) $statusClass = 'bg-success';
+                                        elseif (strpos($row['status'], 'Cancelled') !== false) $statusClass = 'bg-danger';
+                                        elseif (strpos($row['status'], 'To Purchased') !== false) $statusClass = 'bg-info';
+                                        ?>
+                                        <span class="badge <?= $statusClass ?>">
+                                            <?= $row['status'] ?>
+                                        </span>
+                                    </td>
+                                    <td><?= date('M d, Y', strtotime($row['created_at'])) ?></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#viewSprModal<?= $row['id'] ?>">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#updateSprStatus<?= $row['id'] ?>">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                
+                                <!-- View Modal -->
+                                <div class="modal fade" id="viewSprModal<?= $row['id'] ?>" tabindex="-1">
+                                    <div class="modal-dialog modal-lg">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Special Request: <?= $row['request_code'] ?></h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="row mb-3">
+                                                    <div class="col-md-6">
+                                                        <p><strong>Branch:</strong> <?= $row['branch_name'] ?></p>
+                                                        <p><strong>Description:</strong> <?= $row['description'] ?></p>
+                                                        <p><strong>Quantity:</strong> <?= $row['qty'] ?> <?= $row['unit'] ?></p>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <p><strong>Requested By:</strong> <?= $row['requested_by'] ?></p>
+                                                        <p><strong>Date:</strong> <?= date('M d, Y', strtotime($row['created_at'])) ?></p>
+                                                        <p><strong>Status:</strong> <?= $row['status'] ?></p>
+                                                    </div>
+                                                </div>
+                                                <div class="row mb-3">
+                                                    <div class="col-md-6">
+                                                        <p><strong>Estimated Price:</strong> ₱<?= number_format($row['estimated_price'], 2) ?></p>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <p><strong>Total Amount:</strong> ₱<?= number_format($row['total_amount'], 2) ?></p>
+                                                    </div>
+                                                </div>
+                                                <p><strong>Purpose:</strong> <?= $row['purpose'] ?></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Update Status Modal -->
+                                <div class="modal fade" id="updateSprStatus<?= $row['id'] ?>" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Update Status</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <form method="POST">
+                                                <div class="modal-body">
+                                                    <input type="hidden" name="update_status" value="1">
+                                                    <input type="hidden" name="id" value="<?= $row['id'] ?>">
+                                                    <input type="hidden" name="type" value="special">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Status</label>
+                                                        <select class="form-select" name="status" required>
+                                                            <option value="Pending" <?= $row['status'] == 'Pending' ? 'selected' : '' ?>>Pending</option>
+                                                            <option value="Approved By Purchasing" <?= $row['status'] == 'Approved By Purchasing' ? 'selected' : '' ?>>Approved By Purchasing</option>
+                                                            <option value="Approved By Accounting" <?= $row['status'] == 'Approved By Accounting' ? 'selected' : '' ?>>Approved By Accounting</option>
+                                                            <option value="Petty Cash By Branch" <?= $row['status'] == 'Petty Cash By Branch' ? 'selected' : '' ?>>Petty Cash By Branch</option>
+                                                            <option value="To Purchased" <?= $row['status'] == 'To Purchased' ? 'selected' : '' ?>>To Purchased</option>
+                                                            <option value="Cancelled" <?= $row['status'] == 'Cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                    <button type="submit" class="btn btn-primary">Update</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endwhile; ?>
+                                <?php if ($specialRequests->num_rows === 0): ?>
+                                <tr><td colspan="12" class="text-center text-muted">No special requests found</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Office Supplies Tab -->
+        <div class="tab-pane fade" id="office" role="tabpanel">
                                 <?php while ($row = $requisitions->fetch_assoc()): ?>
                                 <tr>
                                     <td><?= $row['requisition_code'] ?></td>
@@ -224,89 +345,6 @@ include 'sidebar.php';
                                 <?php endwhile; ?>
                                 <?php if ($requisitions->num_rows === 0): ?>
                                 <tr><td colspan="8" class="text-center text-muted">No requisitions found</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Special Requests Tab -->
-        <div class="tab-pane fade" id="special" role="tabpanel">
-            <div class="card table-card">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Code</th>
-                                    <th>Branch</th>
-                                    <th>Description</th>
-                                    <th>Qty</th>
-                                    <th>Estimated Price</th>
-                                    <th>Status</th>
-                                    <th>Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php while ($row = $specialRequests->fetch_assoc()): ?>
-                                <tr>
-                                    <td><?= $row['request_code'] ?></td>
-                                    <td><?= $row['branch_name'] ?></td>
-                                    <td><?= substr($row['description'], 0, 40) ?><?= strlen($row['description']) > 40 ? '...' : '' ?></td>
-                                    <td><?= $row['qty'] ?> <?= $row['unit'] ?></td>
-                                    <td>₱<?= number_format($row['estimated_price'], 2) ?></td>
-                                    <td>
-                                        <span class="badge status-badge status-<?= strtolower(str_replace(' ', '-', $row['status'])) ?>">
-                                            <?= $row['status'] ?>
-                                        </span>
-                                    </td>
-                                    <td><?= date('M d, Y', strtotime($row['created_at'])) ?></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#updateSprStatus<?= $row['id'] ?>">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                
-                                <!-- Update Status Modal -->
-                                <div class="modal fade" id="updateSprStatus<?= $row['id'] ?>" tabindex="-1">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title">Update Status</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <form method="POST">
-                                                <div class="modal-body">
-                                                    <input type="hidden" name="update_status" value="1">
-                                                    <input type="hidden" name="id" value="<?= $row['id'] ?>">
-                                                    <input type="hidden" name="type" value="special">
-                                                    <div class="mb-3">
-                                                        <label class="form-label">Status</label>
-                                                        <select class="form-select" name="status" required>
-                                                            <option value="Pending" <?= $row['status'] == 'Pending' ? 'selected' : '' ?>>Pending</option>
-                                                            <option value="Approved By Purchasing" <?= $row['status'] == 'Approved By Purchasing' ? 'selected' : '' ?>>Approved By Purchasing</option>
-                                                            <option value="Approved By Accounting" <?= $row['status'] == 'Approved By Accounting' ? 'selected' : '' ?>>Approved By Accounting</option>
-                                                            <option value="Petty Cash By Branch" <?= $row['status'] == 'Petty Cash By Branch' ? 'selected' : '' ?>>Petty Cash By Branch</option>
-                                                            <option value="To Purchased" <?= $row['status'] == 'To Purchased' ? 'selected' : '' ?>>To Purchased</option>
-                                                            <option value="Cancelled" <?= $row['status'] == 'Cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                    <button type="submit" class="btn btn-primary">Update</button>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                                <?php endwhile; ?>
-                                <?php if ($specialRequests->num_rows === 0): ?>
-                                <tr><td colspan="8" class="text-center text-muted">No special requests found</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>

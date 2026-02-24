@@ -12,6 +12,11 @@
             </a>
         </li>
         <li class="nav-item">
+            <a class="nav-link <?= $activePage === 'calendar' ? 'active' : '' ?>" href="calendar.php">
+                <i class="bi bi-calendar3 me-2"></i> Calendar
+            </a>
+        </li>
+        <li class="nav-item">
             <a class="nav-link <?= $activePage === 'inventory' ? 'active' : '' ?>" href="inventory.php">
                 <i class="bi bi-boxes me-2"></i> Inventory
             </a>
@@ -29,6 +34,11 @@
         <li class="nav-item">
             <a class="nav-link <?= $activePage === 'requisitions' ? 'active' : '' ?>" href="requisitions.php">
                 <i class="bi bi-file-earmark-text me-2"></i> Requisitions
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link <?= $activePage === 'office-supplies' ? 'active' : '' ?>" href="office-supplies.php">
+                <i class="bi bi-shop me-2"></i> Office Supplies
             </a>
         </li>
         <li class="nav-item">

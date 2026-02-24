@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif ($qty < 20) $status = 'Low Stock';
         
         $stmt = $conn->prepare("INSERT INTO inventory (item_id, supplier_id, date, description, unit, qty, unit_price, amount, total_running_stocks, status, classification) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("sisssiiddiss", $item_id, $supplier_id, $date, $description, $unit, $qty, $unit_price, $amount, $qty, $status, $classification);
+        $stmt->bind_param("sisssiddiss", $item_id, $supplier_id, $date, $description, $unit, $qty, $unit_price, $amount, $qty, $status, $classification);
         
         if ($stmt->execute()) {
             $success = "Item added successfully";

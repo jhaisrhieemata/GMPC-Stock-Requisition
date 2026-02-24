@@ -13,8 +13,17 @@ if ($conn->connect_error) {
 
 $conn->set_charset("utf8mb4");
 
+// Base URL for assets
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'];
+$scriptDir = dirname($_SERVER['SCRIPT_NAME']);
+if ($scriptDir === '\\' || $scriptDir === '/') $scriptDir = '';
+define('BASE_URL', $protocol . '://' . $host . $scriptDir);
+
 // Start session
 if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_lifetime', 86400);
+    ini_set('session.gc_maxlifetime', 86400);
     session_start();
 }
 
